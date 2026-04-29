@@ -2,7 +2,7 @@ import { Home, Users, Sparkles, Settings, Plus, HelpCircle, Archive } from 'luci
 import classNames from 'classnames';
 import './Sidebar.css';
 
-const Sidebar = ({ currentPage, onNavigate }) => {
+const Sidebar = ({ currentPage, onNavigate, onCreateNote }) => {
   const navItems = [
     { id: 'home', label: 'Home', icon: Home },
     { id: 'teams', label: 'My Teams', icon: Users },
@@ -29,7 +29,7 @@ const Sidebar = ({ currentPage, onNavigate }) => {
           </button>
         ))}
 
-        <button className="btn btn-primary create-note-btn mt-6 w-full">
+        <button className="btn btn-primary create-note-btn mt-6 w-full" onClick={onCreateNote}>
           <Plus size={20} />
           <span>Create Note</span>
         </button>
