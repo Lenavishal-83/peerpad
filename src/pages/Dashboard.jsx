@@ -1,181 +1,226 @@
 import { useState } from 'react';
-import { Search, FileText, PenTool, Upload, Mic, Grid, List, Plus, X } from 'lucide-react';
+import { Search, FileText, PenTool, Grid, List, Plus, X, Trash2 } from 'lucide-react';
 import './Dashboard.css';
 
 const timeAgo = (date) => {
-  const diff = Math.floor((Date.now() - date) / 1000);
-  if (diff < 60) return 'JUST NOW';
-  if (diff < 3600) return `${Math.floor(diff / 60)}M AGO`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}H AGO`;
-  return `${Math.floor(diff / 86400)}D AGO`;
+  const diff = Math.floor((Date.now() - new Date(date)) / 1000);
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
 };
 
-const Dashboard = ({ notes = [], onOpenNote }) => {
-  const [fabOpen, setFabOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+// Confirm delete dialog
+const DeleteConfirm = ({ note, onConfirm, onCancel }) => (
+  <div className="delete-overlay" onClick={onCancel}>
+    <div className="delete-dialog" onClick={e => e.stopPropagation()}>
+      <div className="delete-dialog-icon"><Trash2 size={22} /></div>
+      <h3 className="delete-dialog-title">Move to Archive?</h3>
+      <p className="delete-dialog-sub">
+        <strong>"{note.title}"</strong> will be moved to your Archive and permanently deleted after 30 days.
+      </p>
+      <div className="delete-dialog-actions">
+        <button className="btn btn-secondary" onClick={onCancel}>Cancel</button>
+        <button className="btn delete-confirm-btn" onClick={onConfirm}>
+          <Trash2 size={15} /> Move to Archive
+        </button>
+      </div>
+    </div>
+  </div>
+);
 
-  const filteredNotes = notes.filter(n =>
+// Single note card
+const NoteCard = ({ note, onOpen, onDelete }) => {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = (e) => {
+    e.stopPropagation();
+    setConfirmDelete(true);
+  };
+
+  const handleConfirm = () => {
+    setDeleting(true);
+    setTimeout(() => onDelete(note.id), 300); // wait for fade-out animation
+  };
+
+  return (
+    <>
+      {confirmDelete && (
+        <DeleteConfirm
+          note={note}
+          onConfirm={handleConfirm}
+          onCancel={() => setConfirmDelete(false)}
+        />
+      )}
+      <div
+        className={`entry-card ${deleting ? 'card-deleting' : 'card-enter'}`}
+        onClick={() => onOpen(note)}
+      >
+        <div className="card-top">
+          <div className="card-icon">
+            {note.type === 'text'
+              ? <FileText size={16} />
+              : <PenTool size={16} />
+            }
+          </div>
+          <div className="card-top-right">
+            <span className="badge">{note.tag || 'PERSONAL'}</span>
+            <button className="card-delete-btn" onClick={handleDelete} title="Delete note">
+              <Trash2 size={14} />
+            </button>
+          </div>
+        </div>
+
+        <h3 className="card-title">{note.title}</h3>
+
+        {note.type === 'text' && note.content && (
+          <p className="card-desc">{note.content}</p>
+        )}
+
+        {note.type === 'drawing' && (
+          <div className="card-drawing-preview">
+            {note.dataURL
+              ? <img src={note.dataURL} alt="Drawing preview" />
+              : <PenTool size={20} style={{ opacity: 0.2 }} />
+            }
+          </div>
+        )}
+
+        <div className="card-footer">
+          <img src="https://i.pravatar.cc/150?u=user" className="card-avatar" alt="" />
+          <span className="time-ago">{timeAgo(note.timestamp)}</span>
+        </div>
+      </div>
+    </>
+  );
+};
+
+const Dashboard = ({ notes = [], onOpenNote, onDeleteNote }) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState('grid');
+  const [fabOpen, setFabOpen] = useState(false);
+
+  const filtered = notes.filter(n =>
     n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (n.content || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
-    <div className="dashboard relative">
+    <div className="dashboard">
+      {/* Header */}
       <header className="dashboard-header">
         <div className="search-bar">
-          <Search size={20} className="text-secondary" />
+          <Search size={16} className="search-icon" />
           <input
             type="text"
             placeholder="Search your sanctuary..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={e => setSearchQuery(e.target.value)}
           />
+          {searchQuery && (
+            <button className="search-clear" onClick={() => setSearchQuery('')}>
+              <X size={14} />
+            </button>
+          )}
         </div>
         <div className="header-actions">
           <button className="nav-tab active">Notes</button>
           <button className="nav-tab">Collections</button>
           <button className="nav-tab">Shared</button>
-          <div className="avatar-small ml-4">
-            <img src="https://i.pravatar.cc/150?u=user" alt="User" />
-          </div>
+          <img src="https://i.pravatar.cc/150?u=user" className="header-avatar" alt="User" />
         </div>
       </header>
 
       <div className="dashboard-content">
-        {notes.length === 0 ? (
-          <>
-            <h1 className="hero-title">
-              All Your Team's Notes.<br />
-              One Place. <span className="text-italic text-secondary">Powered</span><br />
-              <span className="text-italic text-secondary">by AI.</span>
-            </h1>
+        {/* Hero */}
+        <div className="hero-section">
+          <h1 className="hero-title">
+            All Your Notes.<br />
+            <span className="hero-italic">Powered by AI.</span>
+          </h1>
+          <p className="hero-sub">Your personal academic sanctuary. Capture, organize, and study smarter.</p>
+        </div>
 
-            <div className="quick-actions">
-              <button className="action-pill" onClick={() => onOpenNote({ type: 'text' })}>
-                <FileText size={18} />
-                <span>Text Note</span>
-              </button>
-              <button className="action-pill" onClick={() => onOpenNote({ type: 'drawing' })}>
-                <PenTool size={18} />
-                <span>Drawing</span>
-              </button>
-              <button className="action-pill">
-                <Upload size={18} />
-                <span>Upload PDF</span>
-              </button>
-              <button className="action-pill">
-                <Mic size={18} />
-                <span>Voice Note</span>
-              </button>
-            </div>
+        {/* Quick actions — only Text Note + Drawing */}
+        <div className="quick-actions">
+          <button className="action-pill" onClick={() => onOpenNote({ type: 'text' })}>
+            <FileText size={16} />
+            <span>Text Note</span>
+          </button>
+          <button className="action-pill" onClick={() => onOpenNote({ type: 'drawing' })}>
+            <PenTool size={16} />
+            <span>Drawing</span>
+          </button>
+        </div>
 
-            <div className="mt-8 text-secondary text-sm text-center py-12 border-2 border-dashed rounded-xl">
-              <p>No notes yet. Click the + button or an action above to create one.</p>
-            </div>
-          </>
-        ) : (
-          <>
-            <h1 className="hero-title">
-              All Your Team's Notes.<br />
-              One Place. <span className="text-italic text-secondary">Powered</span><br />
-              <span className="text-italic text-secondary">by AI.</span>
-            </h1>
-
-            <div className="quick-actions">
-              <button className="action-pill" onClick={() => onOpenNote({ type: 'text' })}>
-                <FileText size={18} />
-                <span>Text Note</span>
+        {/* Notes section */}
+        <div className="entries-section">
+          <div className="entries-header">
+            <h2 className="entries-label">RECENT ENTRIES</h2>
+            <div className="view-toggles">
+              <button
+                className={`view-toggle ${viewMode === 'grid' ? 'active' : ''}`}
+                onClick={() => setViewMode('grid')}
+              >
+                <Grid size={15} />
               </button>
-              <button className="action-pill" onClick={() => onOpenNote({ type: 'drawing' })}>
-                <PenTool size={18} />
-                <span>Drawing</span>
-              </button>
-              <button className="action-pill">
-                <Upload size={18} />
-                <span>Upload PDF</span>
-              </button>
-              <button className="action-pill">
-                <Mic size={18} />
-                <span>Voice Note</span>
+              <button
+                className={`view-toggle ${viewMode === 'list' ? 'active' : ''}`}
+                onClick={() => setViewMode('list')}
+              >
+                <List size={15} />
               </button>
             </div>
+          </div>
 
-            <div className="entries-section">
-              <div className="entries-header">
-                <h2>RECENT SANCTUARY ENTRIES</h2>
-                <div className="view-toggles">
-                  <button className="view-toggle active"><Grid size={16} /></button>
-                  <button className="view-toggle"><List size={16} /></button>
-                </div>
-              </div>
-
-              <div className="entries-grid">
-                {filteredNotes.map(note => (
-                  <div key={note.id} className="entry-card p-6" onClick={() => onOpenNote(note)}>
-                    <div className="card-top">
-                      {note.type === 'text'
-                        ? <FileText size={20} className="text-secondary" />
-                        : <PenTool size={20} className="text-secondary" />
-                      }
-                      <span className="badge">{note.tag || 'PERSONAL'}</span>
-                    </div>
-                    <h3 className="card-title mt-4 font-bold">{note.title}</h3>
-
-                    {note.type === 'text' && (
-                      <p className="card-desc mt-2 opacity-70" style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                        {note.content}
-                      </p>
-                    )}
-
-                    {note.type === 'drawing' && note.dataURL && (
-                      <div className="card-preview-image mt-4 bg-gray-50 border border-gray-200 rounded-md h-32 mb-4 overflow-hidden">
-                        <img src={note.dataURL} style={{ width: '100%', height: '100%', objectFit: 'contain', backgroundColor: 'white' }} alt="Drawing preview" />
-                      </div>
-                    )}
-
-                    {note.type === 'drawing' && !note.dataURL && (
-                      <div className="mt-4 bg-gray-50 border border-gray-200 rounded-md h-32 mb-4 flex items-center justify-center">
-                        <PenTool size={24} className="text-secondary opacity-30" />
-                      </div>
-                    )}
-
-                    <div className="card-footer mt-auto pt-4 border-t border-gray-100" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div className="avatars-group">
-                        <img src="https://i.pravatar.cc/150?u=user" alt="User" />
-                      </div>
-                      <span className="time-ago">{timeAgo(note.timestamp)}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          {filtered.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon"><FileText size={32} /></div>
+              <p className="empty-title">No notes yet</p>
+              <p className="empty-sub">Create your first note using the + button below or the quick actions above.</p>
             </div>
-          </>
-        )}
+          ) : (
+            <div className={`entries-grid ${viewMode === 'list' ? 'entries-list' : ''}`}>
+              {filtered.map(note => (
+                <NoteCard
+                  key={note.id}
+                  note={note}
+                  onOpen={onOpenNote}
+                  onDelete={onDeleteNote}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Floating Action Button */}
-      <div className="fixed bottom-10 right-10 flex flex-col items-end z-50">
+      {/* Google Keep-style FAB */}
+      <div className="fab-container">
         {fabOpen && (
-          <div className="flex flex-col gap-3 mb-4 animate-fade-in">
+          <div className="fab-menu">
             <button
-              className="bg-white text-black font-semibold shadow-lg rounded-full px-6 py-3 flex items-center gap-3 hover:scale-105 transition"
+              className="fab-option"
               onClick={() => { setFabOpen(false); onOpenNote({ type: 'text' }); }}
             >
-              Text Note <FileText size={18} />
+              <FileText size={18} />
+              <span>Text Note</span>
             </button>
             <button
-              className="bg-white text-black font-semibold shadow-lg rounded-full px-6 py-3 flex items-center gap-3 hover:scale-105 transition"
+              className="fab-option"
               onClick={() => { setFabOpen(false); onOpenNote({ type: 'drawing' }); }}
             >
-              Drawing Canvas <PenTool size={18} />
+              <PenTool size={18} />
+              <span>Drawing</span>
             </button>
           </div>
         )}
         <button
-          className="w-16 h-16 bg-black text-white rounded-full flex items-center justify-center shadow-xl hover:scale-110 transition shrink-0"
-          onClick={() => setFabOpen(!fabOpen)}
+          className={`fab-btn ${fabOpen ? 'fab-open' : ''}`}
+          onClick={() => setFabOpen(prev => !prev)}
+          title="Create note"
         >
-          {fabOpen ? <X size={28} /> : <Plus size={28} />}
+          {fabOpen ? <X size={24} /> : <Plus size={24} />}
         </button>
       </div>
     </div>

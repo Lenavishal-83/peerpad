@@ -5,6 +5,8 @@ import TeamNotes from './pages/TeamNotes';
 import DrawingCanvasPage from './pages/DrawingCanvasPage';
 import AIToolsPage from './pages/AIToolsPage';
 import TextEditorPage from './pages/TextEditorPage';
+import SettingsPage from './pages/SettingsPage';
+import ArchivePage from './pages/ArchivePage';
 import { SyncProvider } from './context/SyncContext';
 import { TeamProvider } from './context/TeamContext';
 
@@ -12,25 +14,16 @@ const SEED_NOTES = [
   {
     id: '1',
     title: 'Finals: Skeletal System Deep Dive',
-    content: 'Reviewing the axial skeleton structures. AI suggests focusing on the cranial sutures for the upcoming quiz...',
+    content: 'Reviewing the axial skeleton structures. AI suggests focusing on the cranial sutures for the upcoming quiz. Key points: cranial bones, suture types, fontanelles in development.',
     type: 'text',
-    tag: 'ANATOMY TEAM',
+    tag: 'PERSONAL',
     timestamp: new Date(Date.now() - 2 * 60 * 1000),
-    teamId: null,
-  },
-  {
-    id: '2',
-    title: 'User Flow Concept #3',
-    content: 'Initial wireframes for the mobile navigation system. Exploring circular menu patterns.',
-    type: 'drawing',
-    tag: 'DESIGN WORKSHOP',
-    timestamp: new Date(Date.now() - 15 * 60 * 1000),
     teamId: null,
   },
   {
     id: '3',
     title: 'Thesis Research: Digital Ethics',
-    content: 'Must find more sources on data sovereignty in the age of generative AI. Reach out to Dr. Miller for reading list.',
+    content: 'Must find more sources on data sovereignty in the age of generative AI. Reach out to Dr. Miller for reading list. Key themes: privacy, consent, algorithmic bias.',
     type: 'text',
     tag: 'PERSONAL',
     timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000),
@@ -38,28 +31,14 @@ const SEED_NOTES = [
   },
 ];
 
-const SEED_TEAMS = [
-  {
-    id: 'team-1',
-    name: 'Anatomy Study Group',
-    subject: 'MEDICAL SCIENCE',
-    memberCount: 3,
-    members: [
-      { id: 1, name: 'Alex', avatar: 'https://i.pravatar.cc/150?u=alex' },
-      { id: 2, name: 'Sarah', avatar: 'https://i.pravatar.cc/150?u=sarah' },
-      { id: 3, name: 'Dr. Julian', avatar: 'https://i.pravatar.cc/150?u=julian' },
-    ],
-  },
-];
-
 function App() {
   const [currentPage, setCurrentPage] = useState('home');
   const [activeNote, setActiveNote] = useState(null);
   const [notes, setNotes] = useState(SEED_NOTES);
-  const [teams, setTeams] = useState(SEED_TEAMS);
+  const [archivedNotes, setArchivedNotes] = useState([]);
+  const [teams, setTeams] = useState([]);
   const [activeTeamId, setActiveTeamId] = useState(null);
 
-  // Shared note save — works for both personal and team notes
   const handleSaveAndBack = useCallback((noteData) => {
     if (noteData) {
       if (noteData.id) {
@@ -82,21 +61,43 @@ function App() {
     setActiveNote(null);
   }, [teams]);
 
+  // Soft-delete: moves note to archive with 30-day expiry
+  const handleDeleteNote = useCallback((noteId) => {
+    const note = notes.find(n => n.id === noteId);
+    if (!note) return;
+    setArchivedNotes(prev => [
+      ...prev,
+      {
+        ...note,
+        deletedAt: new Date(),
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      },
+    ]);
+    setNotes(prev => prev.filter(n => n.id !== noteId));
+  }, [notes]);
+
+  const handleRestoreNote = useCallback((noteId) => {
+    const note = archivedNotes.find(n => n.id === noteId);
+    if (!note) return;
+    // eslint-disable-next-line no-unused-vars
+    const { deletedAt, expiresAt, ...restored } = note;
+    setNotes(prev => [{ ...restored, timestamp: new Date() }, ...prev]);
+    setArchivedNotes(prev => prev.filter(n => n.id !== noteId));
+  }, [archivedNotes]);
+
+  const handlePermanentDelete = useCallback((noteId) => {
+    setArchivedNotes(prev => prev.filter(n => n.id !== noteId));
+  }, []);
+
   const handleCreateTeam = useCallback((teamData) => {
     const newTeam = {
       id: `team-${Date.now()}`,
       name: teamData.name,
       subject: teamData.subject || 'GENERAL',
-      memberCount: 1,
       members: [{ id: 1, name: 'You', avatar: 'https://i.pravatar.cc/150?u=user' }],
     };
     setTeams(prev => [...prev, newTeam]);
     setActiveTeamId(newTeam.id);
-    setCurrentPage('teams');
-  }, []);
-
-  const handleOpenTeam = useCallback((teamId) => {
-    setActiveTeamId(teamId);
     setCurrentPage('teams');
   }, []);
 
@@ -114,6 +115,7 @@ function App() {
           <Dashboard
             notes={notes.filter(n => !n.teamId)}
             onOpenNote={setActiveNote}
+            onDeleteNote={handleDeleteNote}
           />
         );
       case 'teams':
@@ -121,20 +123,31 @@ function App() {
           <TeamNotes
             teams={teams}
             activeTeamId={activeTeamId}
-            onSelectTeam={setActiveTeamId}
+            onSelectTeam={(id) => setActiveTeamId(id)}
             onCreateTeam={handleCreateTeam}
             onOpenNote={setActiveNote}
+            onDeleteNote={handleDeleteNote}
             teamNotes={notes.filter(n => n.teamId === activeTeamId)}
-            allNotes={notes}
           />
         );
       case 'ai':
         return <AIToolsPage />;
+      case 'settings':
+        return <SettingsPage />;
+      case 'archive':
+        return (
+          <ArchivePage
+            archivedNotes={archivedNotes}
+            onRestore={handleRestoreNote}
+            onPermanentDelete={handlePermanentDelete}
+          />
+        );
       default:
         return (
           <Dashboard
             notes={notes.filter(n => !n.teamId)}
             onOpenNote={setActiveNote}
+            onDeleteNote={handleDeleteNote}
           />
         );
     }
@@ -148,9 +161,7 @@ function App() {
             currentPage={currentPage}
             onNavigate={(page) => {
               setCurrentPage(page);
-              if (page === 'teams' && teams.length > 0 && !activeTeamId) {
-                setActiveTeamId(teams[0].id);
-              }
+              if (page === 'teams') setActiveTeamId(null);
             }}
             onCreateNote={() => setActiveNote({ type: 'text' })}
           />

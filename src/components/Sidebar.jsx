@@ -1,4 +1,4 @@
-import { Home, Users, Sparkles, Settings, Plus, HelpCircle, Archive } from 'lucide-react';
+import { Home, Users, Sparkles, Settings, Plus, HelpCircle, Archive, Info } from 'lucide-react';
 import classNames from 'classnames';
 import './Sidebar.css';
 
@@ -40,9 +40,19 @@ const Sidebar = ({ currentPage, onNavigate, onCreateNote }) => {
           <HelpCircle size={20} className="nav-icon" />
           <span>Help</span>
         </button>
-        <button className="nav-item">
+        <button
+          className={classNames('nav-item', { active: currentPage === 'archive' })}
+          onClick={() => onNavigate('archive')}
+        >
           <Archive size={20} className="nav-icon" />
           <span>Archive</span>
+        </button>
+        <button
+          className={classNames('nav-item', { active: currentPage === 'about' })}
+          onClick={() => onNavigate('about')}
+        >
+          <Info size={20} className="nav-icon" />
+          <span>About Us</span>
         </button>
       </div>
     </div>
