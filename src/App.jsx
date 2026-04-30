@@ -7,34 +7,14 @@ import AIToolsPage from './pages/AIToolsPage';
 import TextEditorPage from './pages/TextEditorPage';
 import SettingsPage from './pages/SettingsPage';
 import ArchivePage from './pages/ArchivePage';
+import AboutPage from './pages/AboutPage';
 import { SyncProvider } from './context/SyncContext';
 import { TeamProvider } from './context/TeamContext';
-
-const SEED_NOTES = [
-  {
-    id: '1',
-    title: 'Finals: Skeletal System Deep Dive',
-    content: 'Reviewing the axial skeleton structures. AI suggests focusing on the cranial sutures for the upcoming quiz. Key points: cranial bones, suture types, fontanelles in development.',
-    type: 'text',
-    tag: 'PERSONAL',
-    timestamp: new Date(Date.now() - 2 * 60 * 1000),
-    teamId: null,
-  },
-  {
-    id: '3',
-    title: 'Thesis Research: Digital Ethics',
-    content: 'Must find more sources on data sovereignty in the age of generative AI. Reach out to Dr. Miller for reading list. Key themes: privacy, consent, algorithmic bias.',
-    type: 'text',
-    tag: 'PERSONAL',
-    timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000),
-    teamId: null,
-  },
-];
 
 function App() {
   const [currentPage, setCurrentPage] = useState('home');
   const [activeNote, setActiveNote] = useState(null);
-  const [notes, setNotes] = useState(SEED_NOTES);
+  const [notes, setNotes] = useState([]);
   const [archivedNotes, setArchivedNotes] = useState([]);
   const [teams, setTeams] = useState([]);
   const [activeTeamId, setActiveTeamId] = useState(null);
@@ -142,6 +122,8 @@ function App() {
             onPermanentDelete={handlePermanentDelete}
           />
         );
+      case 'about':
+        return <AboutPage />;
       default:
         return (
           <Dashboard

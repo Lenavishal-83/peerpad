@@ -1,4 +1,4 @@
-import { Heart, Github, Mail, Users, Sparkles } from 'lucide-react';
+import { ExternalLink, Heart, Mail, Users, Sparkles } from 'lucide-react';
 import './AboutPage.css';
 
 const AboutPage = () => (
@@ -41,7 +41,7 @@ const AboutPage = () => (
         <Mail size={16} /> hello@peerpad.app
       </a>
       <a className="about-link" href="https://github.com" target="_blank" rel="noreferrer">
-        <Github size={16} /> GitHub
+        <ExternalLink size={16} /> GitHub
       </a>
     </div>
 
