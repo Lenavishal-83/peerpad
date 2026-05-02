@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Search, FileText, PenTool, Grid, List, Plus, X, Trash2 } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Search, FileText, PenTool, Grid, List, Plus, X, Trash2, Image, Mail, UserPlus, Check } from 'lucide-react';
 import './Dashboard.css';
 
 const timeAgo = (date) => {
@@ -10,64 +10,134 @@ const timeAgo = (date) => {
   return `${Math.floor(diff / 86400)}d ago`;
 };
 
-// Confirm delete dialog
+/* ── Collaborate Modal (per-card, independent of teams) ── */
+const CollabModal = ({ note, onClose, onAddCollaborator }) => {
+  const [email, setEmail] = useState('');
+  const [sent, setSent] = useState(note.collaborators || []);
+  const [status, setStatus] = useState('idle');
+
+  const handleSend = (e) => {
+    e.preventDefault();
+    if (!email.trim() || sent.includes(email.trim())) return;
+    setStatus('sending');
+    // Simulate sending invite
+    setTimeout(() => {
+      const newList = [...sent, email.trim()];
+      setSent(newList);
+      onAddCollaborator(note.id, newList);
+      setEmail('');
+      setStatus('sent');
+      setTimeout(() => setStatus('idle'), 1500);
+    }, 800);
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-box" onClick={e => e.stopPropagation()}>
+        <div className="modal-top">
+          <h3 className="modal-title">Collaborate on note</h3>
+          <button className="modal-x" onClick={onClose}><X size={18} /></button>
+        </div>
+        <p className="modal-sub">Invite teammates to view and edit "{note.title}" via email.</p>
+
+        <form className="modal-email-form" onSubmit={handleSend}>
+          <input
+            className="modal-email-input"
+            type="email"
+            placeholder="teammate@university.edu"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            autoFocus
+          />
+          <button type="submit" className="modal-send-btn" disabled={status === 'sending'}>
+            {status === 'sending' ? '...' : status === 'sent' ? <Check size={15} /> : <Mail size={15} />}
+            {status === 'sent' ? 'Sent!' : 'Invite'}
+          </button>
+        </form>
+
+        {sent.length > 0 && (
+          <div className="modal-collab-list">
+            <p className="modal-list-label">Invited ({sent.length})</p>
+            {sent.map((em, i) => (
+              <div key={i} className="modal-collab-item">
+                <div className="collab-dot" />
+                <span>{em}</span>
+                <span className="collab-status">Pending</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ── Delete confirm (no blurred backdrop) ── */
 const DeleteConfirm = ({ note, onConfirm, onCancel }) => (
-  <div className="delete-overlay" onClick={onCancel}>
-    <div className="delete-dialog" onClick={e => e.stopPropagation()}>
-      <div className="delete-dialog-icon"><Trash2 size={22} /></div>
-      <h3 className="delete-dialog-title">Move to Archive?</h3>
-      <p className="delete-dialog-sub">
-        <strong>"{note.title}"</strong> will be moved to your Archive and permanently deleted after 30 days.
-      </p>
-      <div className="delete-dialog-actions">
+  <div className="delete-backdrop" onClick={onCancel}>
+    <div className="delete-box" onClick={e => e.stopPropagation()}>
+      <div className="delete-icon-wrap"><Trash2 size={20} /></div>
+      <h3 className="delete-title">Move to Archive?</h3>
+      <p className="delete-sub"><strong>"{note.title}"</strong> will be archived for 30 days, then deleted.</p>
+      <div className="delete-actions">
         <button className="btn btn-secondary" onClick={onCancel}>Cancel</button>
-        <button className="btn delete-confirm-btn" onClick={onConfirm}>
-          <Trash2 size={15} /> Move to Archive
-        </button>
+        <button className="btn delete-btn" onClick={onConfirm}><Trash2 size={14} /> Archive</button>
       </div>
     </div>
   </div>
 );
 
-// Single note card
-const NoteCard = ({ note, onOpen, onDelete }) => {
-  const [confirmDelete, setConfirmDelete] = useState(false);
+/* ── Single note card ── */
+const NoteCard = ({ note, onOpen, onDelete, onUpdateCollaborators }) => {
+  const [showDelete, setShowDelete] = useState(false);
+  const [showCollab, setShowCollab] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const handleDelete = (e) => {
-    e.stopPropagation();
-    setConfirmDelete(true);
-  };
-
-  const handleConfirm = () => {
+  const handleConfirmDelete = () => {
     setDeleting(true);
-    setTimeout(() => onDelete(note.id), 300); // wait for fade-out animation
+    setShowDelete(false);
+    setTimeout(() => onDelete(note.id), 280);
   };
 
   return (
     <>
-      {confirmDelete && (
+      {showDelete && (
         <DeleteConfirm
           note={note}
-          onConfirm={handleConfirm}
-          onCancel={() => setConfirmDelete(false)}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setShowDelete(false)}
+        />
+      )}
+      {showCollab && (
+        <CollabModal
+          note={note}
+          onClose={() => setShowCollab(false)}
+          onAddCollaborator={onUpdateCollaborators}
         />
       )}
       <div
-        className={`entry-card ${deleting ? 'card-deleting' : 'card-enter'}`}
+        className={`entry-card ${deleting ? 'card-exit' : 'card-enter'}`}
         onClick={() => onOpen(note)}
       >
         <div className="card-top">
           <div className="card-icon">
-            {note.type === 'text'
-              ? <FileText size={16} />
-              : <PenTool size={16} />
-            }
+            {note.type === 'text' ? <FileText size={15} /> : <PenTool size={15} />}
           </div>
           <div className="card-top-right">
             <span className="badge">{note.tag || 'PERSONAL'}</span>
-            <button className="card-delete-btn" onClick={handleDelete} title="Delete note">
-              <Trash2 size={14} />
+            <button
+              className="card-action-btn"
+              title="Collaborate"
+              onClick={e => { e.stopPropagation(); setShowCollab(true); }}
+            >
+              <UserPlus size={13} />
+            </button>
+            <button
+              className="card-action-btn card-delete"
+              title="Delete"
+              onClick={e => { e.stopPropagation(); setShowDelete(true); }}
+            >
+              <Trash2 size={13} />
             </button>
           </div>
         </div>
@@ -78,17 +148,34 @@ const NoteCard = ({ note, onOpen, onDelete }) => {
           <p className="card-desc">{note.content}</p>
         )}
 
+        {/* Image previews */}
+        {note.images && note.images.length > 0 && (
+          <div className="card-images">
+            {note.images.slice(0, 3).map((src, i) => (
+              <img key={i} src={src} alt="" className="card-image-thumb" />
+            ))}
+            {note.images.length > 3 && (
+              <div className="card-image-more">+{note.images.length - 3}</div>
+            )}
+          </div>
+        )}
+
         {note.type === 'drawing' && (
           <div className="card-drawing-preview">
             {note.dataURL
               ? <img src={note.dataURL} alt="Drawing preview" />
-              : <PenTool size={20} style={{ opacity: 0.2 }} />
+              : <PenTool size={20} style={{ opacity: 0.15 }} />
             }
           </div>
         )}
 
         <div className="card-footer">
-          <img src="https://i.pravatar.cc/150?u=user" className="card-avatar" alt="" />
+          <div className="card-footer-left">
+            <img src="https://i.pravatar.cc/150?u=user" className="card-avatar" alt="" />
+            {note.collaborators && note.collaborators.length > 0 && (
+              <span className="collab-count">{note.collaborators.length} collaborator{note.collaborators.length > 1 ? 's' : ''}</span>
+            )}
+          </div>
           <span className="time-ago">{timeAgo(note.timestamp)}</span>
         </div>
       </div>
@@ -96,22 +183,48 @@ const NoteCard = ({ note, onOpen, onDelete }) => {
   );
 };
 
+/* ── Dashboard ── */
 const Dashboard = ({ notes = [], onOpenNote, onDeleteNote }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('grid');
   const [fabOpen, setFabOpen] = useState(false);
+  const imageInputRef = useRef(null);
 
-  const filtered = notes.filter(n =>
+  const [allNotes, setAllNotes] = useState(notes);
+
+  // Keep local copy synced with prop
+  const displayNotes = notes;
+
+  const filtered = displayNotes.filter(n =>
     n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (n.content || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const handleUpdateCollaborators = (noteId, collaborators) => {
+    // Bubble up via onDeleteNote pattern isn't ideal; we'll handle via onOpenNote flow
+    // For now update is reflected in the card's own state via the modal
+    console.log('Collaborators updated for note', noteId, collaborators);
+  };
+
+  const handleImageNoteCreate = (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    const readers = files.map(f => new Promise(res => {
+      const r = new FileReader();
+      r.onload = () => res(r.result);
+      r.readAsDataURL(f);
+    }));
+    Promise.all(readers).then(images => {
+      onOpenNote({ type: 'text', images, title: '', content: '' });
+    });
+    setFabOpen(false);
+  };
+
   return (
     <div className="dashboard">
-      {/* Header */}
       <header className="dashboard-header">
         <div className="search-bar">
-          <Search size={16} className="search-icon" />
+          <Search size={15} className="search-icon" />
           <input
             type="text"
             placeholder="Search your sanctuary..."
@@ -120,7 +233,7 @@ const Dashboard = ({ notes = [], onOpenNote, onDeleteNote }) => {
           />
           {searchQuery && (
             <button className="search-clear" onClick={() => setSearchQuery('')}>
-              <X size={14} />
+              <X size={13} />
             </button>
           )}
         </div>
@@ -133,52 +246,52 @@ const Dashboard = ({ notes = [], onOpenNote, onDeleteNote }) => {
       </header>
 
       <div className="dashboard-content">
-        {/* Hero */}
+        {/* Hero — single line */}
         <div className="hero-section">
           <h1 className="hero-title">
-            All Your Notes.<br />
-            <span className="hero-italic">Powered by AI.</span>
+            All Your Notes. <span className="hero-italic">Powered by AI.</span>
           </h1>
           <p className="hero-sub">Your personal academic sanctuary. Capture, organize, and study smarter.</p>
         </div>
 
-        {/* Quick actions — only Text Note + Drawing */}
         <div className="quick-actions">
           <button className="action-pill" onClick={() => onOpenNote({ type: 'text' })}>
-            <FileText size={16} />
-            <span>Text Note</span>
+            <FileText size={15} /><span>Text Note</span>
           </button>
           <button className="action-pill" onClick={() => onOpenNote({ type: 'drawing' })}>
-            <PenTool size={16} />
-            <span>Drawing</span>
+            <PenTool size={15} /><span>Drawing</span>
           </button>
+          <button className="action-pill" onClick={() => imageInputRef.current?.click()}>
+            <Image size={15} /><span>Image Note</span>
+          </button>
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            style={{ display: 'none' }}
+            onChange={handleImageNoteCreate}
+          />
         </div>
 
-        {/* Notes section */}
         <div className="entries-section">
           <div className="entries-header">
             <h2 className="entries-label">RECENT ENTRIES</h2>
             <div className="view-toggles">
-              <button
-                className={`view-toggle ${viewMode === 'grid' ? 'active' : ''}`}
-                onClick={() => setViewMode('grid')}
-              >
-                <Grid size={15} />
+              <button className={`view-toggle ${viewMode === 'grid' ? 'active' : ''}`} onClick={() => setViewMode('grid')}>
+                <Grid size={14} />
               </button>
-              <button
-                className={`view-toggle ${viewMode === 'list' ? 'active' : ''}`}
-                onClick={() => setViewMode('list')}
-              >
-                <List size={15} />
+              <button className={`view-toggle ${viewMode === 'list' ? 'active' : ''}`} onClick={() => setViewMode('list')}>
+                <List size={14} />
               </button>
             </div>
           </div>
 
           {filtered.length === 0 ? (
             <div className="empty-state">
-              <div className="empty-icon"><FileText size={32} /></div>
+              <div className="empty-icon"><FileText size={28} /></div>
               <p className="empty-title">No notes yet</p>
-              <p className="empty-sub">Create your first note using the + button below or the quick actions above.</p>
+              <p className="empty-sub">Create your first note using the + button or quick actions above.</p>
             </div>
           ) : (
             <div className={`entries-grid ${viewMode === 'list' ? 'entries-list' : ''}`}>
@@ -188,6 +301,7 @@ const Dashboard = ({ notes = [], onOpenNote, onDeleteNote }) => {
                   note={note}
                   onOpen={onOpenNote}
                   onDelete={onDeleteNote}
+                  onUpdateCollaborators={handleUpdateCollaborators}
                 />
               ))}
             </div>
@@ -195,32 +309,26 @@ const Dashboard = ({ notes = [], onOpenNote, onDeleteNote }) => {
         </div>
       </div>
 
-      {/* Google Keep-style FAB */}
+      {/* FAB */}
       <div className="fab-container">
         {fabOpen && (
           <div className="fab-menu">
-            <button
-              className="fab-option"
-              onClick={() => { setFabOpen(false); onOpenNote({ type: 'text' }); }}
-            >
-              <FileText size={18} />
-              <span>Text Note</span>
+            <button className="fab-option" onClick={() => { setFabOpen(false); onOpenNote({ type: 'text' }); }}>
+              <FileText size={16} /><span>Text Note</span>
             </button>
-            <button
-              className="fab-option"
-              onClick={() => { setFabOpen(false); onOpenNote({ type: 'drawing' }); }}
-            >
-              <PenTool size={18} />
-              <span>Drawing</span>
+            <button className="fab-option" onClick={() => { setFabOpen(false); onOpenNote({ type: 'drawing' }); }}>
+              <PenTool size={16} /><span>Drawing</span>
+            </button>
+            <button className="fab-option" onClick={() => { setFabOpen(false); setTimeout(() => imageInputRef.current?.click(), 50); }}>
+              <Image size={16} /><span>Image Note</span>
             </button>
           </div>
         )}
         <button
           className={`fab-btn ${fabOpen ? 'fab-open' : ''}`}
-          onClick={() => setFabOpen(prev => !prev)}
-          title="Create note"
+          onClick={() => setFabOpen(p => !p)}
         >
-          {fabOpen ? <X size={24} /> : <Plus size={24} />}
+          {fabOpen ? <X size={22} /> : <Plus size={22} />}
         </button>
       </div>
     </div>

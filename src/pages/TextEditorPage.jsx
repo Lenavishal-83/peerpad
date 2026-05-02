@@ -1,22 +1,129 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ArrowLeft, Share2, MoreVertical, Bold, Italic,
   List, Link2, BookOpen, HelpCircle, PlayCircle,
-  AlignLeft, AlignCenter, Underline
+  AlignLeft, AlignCenter, Underline, Image, Mail,
+  X, Check, Users
 } from 'lucide-react';
 import { useSync } from '../context/SyncContext';
 import './TextEditorPage.css';
+
+/* ── AI suggestion via Claude API ── */
+async function fetchAISuggestion(text) {
+  try {
+    const sentences = text.trim().split(/[.!?]+/).filter(s => s.trim().length > 3);
+    if (sentences.length < 1 || text.trim().length < 20) return '';
+    const lastSentence = sentences[sentences.length - 1].trim();
+    if (!lastSentence) return '';
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 40,
+        messages: [{
+          role: 'user',
+          content: `You are an academic note-taking autocomplete assistant. Continue the following partial sentence naturally with 5-12 words. Return ONLY the continuation text, no punctuation at start, no quotes, no explanation.
+
+Partial text: "${lastSentence}"`
+        }]
+      })
+    });
+    if (!response.ok) return '';
+    const data = await response.json();
+    const suggestion = data.content?.[0]?.text?.trim() || '';
+    return suggestion.replace(/^["']|["']$/g, '').trim();
+  } catch {
+    return '';
+  }
+}
+
+/* ── Collaboration modal ── */
+const CollabModal = ({ onClose, noteTitle }) => {
+  const [email, setEmail] = useState('');
+  const [invited, setInvited] = useState([]);
+  const [sending, setSending] = useState(false);
+
+  const handleInvite = (e) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+    setSending(true);
+    setTimeout(() => {
+      setInvited(prev => [...prev, email.trim()]);
+      setEmail('');
+      setSending(false);
+    }, 600);
+  };
+
+  return (
+    <div className="collab-overlay" onClick={onClose}>
+      <div className="collab-modal" onClick={e => e.stopPropagation()}>
+        <div className="collab-modal-header">
+          <div>
+            <h3>Share Note</h3>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>"{noteTitle}"</p>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+            <X size={18} />
+          </button>
+        </div>
+        <form onSubmit={handleInvite} style={{ marginTop: 16 }}>
+          <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+            Invite by email
+          </label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="collaborator@university.edu"
+              style={{ flex: 1, padding: '10px 14px', border: '1px solid var(--border-color)', borderRadius: 10, fontSize: 14, fontFamily: 'inherit', outline: 'none' }}
+              autoFocus
+            />
+            <button
+              type="submit"
+              disabled={sending}
+              style={{ padding: '10px 18px', background: '#000', color: '#fff', border: 'none', borderRadius: 999, fontWeight: 600, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap', opacity: sending ? 0.6 : 1 }}
+            >
+              {sending ? 'Sending…' : 'Invite'}
+            </button>
+          </div>
+        </form>
+        {invited.length > 0 && (
+          <div style={{ marginTop: 16, borderTop: '1px solid var(--divider-color)', paddingTop: 12 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-secondary)', marginBottom: 8 }}>Invited</p>
+            {invited.map((e, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#34C759', flexShrink: 0 }} />
+                <span>{e}</span>
+                <Check size={13} color="#34C759" style={{ marginLeft: 'auto' }} />
+              </div>
+            ))}
+          </div>
+        )}
+        <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 14, lineHeight: 1.5 }}>
+          Collaborators can view and edit this note independently of any team.
+        </p>
+      </div>
+    </div>
+  );
+};
 
 const TextEditorPage = ({ note, onBack }) => {
   const { dispatchEvent } = useSync();
   const [title, setTitle] = useState(note?.title || '');
   const [content, setContent] = useState(note?.content || '');
+  const [images, setImages] = useState(note?.images || []);
   const [lastSaved, setLastSaved] = useState(null);
   const [wordCount, setWordCount] = useState(0);
+  const [aiSuggestion, setAiSuggestion] = useState('');
+  const [showCollab, setShowCollab] = useState(false);
   const saveTimer = useRef(null);
+  const aiTimer = useRef(null);
   const textareaRef = useRef(null);
+  const imageInputRef = useRef(null);
 
-  // Auto-resize textarea
   useEffect(() => {
     const ta = textareaRef.current;
     if (ta) {
@@ -25,29 +132,67 @@ const TextEditorPage = ({ note, onBack }) => {
     }
   }, [content]);
 
-  // Count words
   useEffect(() => {
     const words = content.trim().split(/\s+/).filter(Boolean).length;
     setWordCount(words);
   }, [content]);
 
-  // Debounced auto-save indicator
   const handleContentChange = (e) => {
     const val = e.target.value;
     setContent(val);
+    setAiSuggestion('');
     setLastSaved(null);
+
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       setLastSaved(new Date());
       dispatchEvent({ type: 'NOTE_EDIT', payload: { content: val } });
     }, 800);
+
+    clearTimeout(aiTimer.current);
+    aiTimer.current = setTimeout(async () => {
+      if (val.trim().length > 20) {
+        const suggestion = await fetchAISuggestion(val);
+        setAiSuggestion(suggestion);
+      }
+    }, 1200);
   };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Tab' && aiSuggestion) {
+      e.preventDefault();
+      setContent(prev => {
+        const newContent = prev + aiSuggestion;
+        setTimeout(() => {
+          const ta = textareaRef.current;
+          if (ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
+        }, 0);
+        return newContent;
+      });
+      setAiSuggestion('');
+    }
+    if (e.key === 'Escape') setAiSuggestion('');
+  };
+
+  const handleImageUpload = (e) => {
+    const files = Array.from(e.target.files);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setImages(prev => [...prev, { id: Date.now() + Math.random(), url: ev.target.result, name: file.name }]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removeImage = (id) => setImages(prev => prev.filter(img => img.id !== id));
 
   const handleBack = () => {
     onBack({
       id: note?.id,
       title: title.trim() || 'Untitled Note',
       content,
+      images,
       type: 'text',
       teamId: note?.teamId || null,
       tag: note?.tag || 'PERSONAL',
@@ -60,12 +205,11 @@ const TextEditorPage = ({ note, onBack }) => {
 
   return (
     <div className="editor-page">
-      {/* Top bar */}
+      {showCollab && <CollabModal noteTitle={title || 'Untitled Note'} onClose={() => setShowCollab(false)} />}
+
       <header className="editor-topbar">
         <div className="editor-topbar-left">
-          <button className="editor-back-btn" onClick={handleBack}>
-            <ArrowLeft size={18} />
-          </button>
+          <button className="editor-back-btn" onClick={handleBack}><ArrowLeft size={18} /></button>
           <div className="editor-brand">
             <span className="editor-brand-name">PeerPad</span>
             <span className="editor-brand-sub">ACADEMIC SANCTUARY</span>
@@ -76,27 +220,28 @@ const TextEditorPage = ({ note, onBack }) => {
             <span className="editor-save-dot" />
             {savedLabel}
           </div>
+          <button className="editor-collab-btn" onClick={() => setShowCollab(true)} title="Share & Collaborate">
+            <Users size={15} /> Share
+          </button>
           <button className="editor-share-btn">
-            <Share2 size={15} /> Share
+            <Share2 size={15} /> Export
           </button>
-          <button className="editor-more-btn">
-            <MoreVertical size={18} />
-          </button>
+          <button className="editor-more-btn"><MoreVertical size={18} /></button>
         </div>
       </header>
 
       <div className="editor-body">
-        {/* Main writing area */}
         <div className="editor-main">
           <div className="editor-scroll-area">
-            {/* Tag + meta */}
             <div className="editor-meta">
               <span className="editor-tag">{note?.tag || 'PERSONAL'}</span>
               <span className="editor-meta-sep">·</span>
               <span className="editor-meta-text">{wordCount} words</span>
+              {aiSuggestion && (
+                <span className="editor-ai-hint">Tab to accept suggestion</span>
+              )}
             </div>
 
-            {/* Title */}
             <input
               className="editor-title-input"
               placeholder="Note title…"
@@ -105,20 +250,50 @@ const TextEditorPage = ({ note, onBack }) => {
               maxLength={120}
             />
 
-            {/* Divider */}
             <div className="editor-divider" />
 
-            {/* Content */}
-            <textarea
-              ref={textareaRef}
-              className="editor-textarea"
-              placeholder="Start writing your note here…"
-              value={content}
-              onChange={handleContentChange}
+            {/* Images */}
+            {images.length > 0 && (
+              <div className="editor-images-grid">
+                {images.map(img => (
+                  <div key={img.id} className="editor-image-item">
+                    <img src={img.url} alt={img.name} />
+                    <button className="editor-image-remove" onClick={() => removeImage(img.id)}>
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Textarea with ghost suggestion */}
+            <div className="editor-textarea-wrapper">
+              <textarea
+                ref={textareaRef}
+                className="editor-textarea"
+                placeholder="Start writing your note here…"
+                value={content}
+                onChange={handleContentChange}
+                onKeyDown={handleKeyDown}
+              />
+              {aiSuggestion && (
+                <div className="editor-ai-suggestion" aria-hidden="true">
+                  <span style={{ visibility: 'hidden', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{content}</span>
+                  <span className="editor-ai-ghost">{aiSuggestion}</span>
+                </div>
+              )}
+            </div>
+
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              style={{ display: 'none' }}
+              onChange={handleImageUpload}
             />
           </div>
 
-          {/* Formatting toolbar — floating at bottom of writing area */}
           <div className="editor-toolbar">
             <button className="toolbar-btn" title="Bold"><Bold size={16} /></button>
             <button className="toolbar-btn" title="Italic"><Italic size={16} /></button>
@@ -129,23 +304,30 @@ const TextEditorPage = ({ note, onBack }) => {
             <button className="toolbar-btn" title="Align center"><AlignCenter size={16} /></button>
             <div className="toolbar-sep" />
             <button className="toolbar-btn" title="Insert link"><Link2 size={16} /></button>
+            <button className="toolbar-btn" title="Add image" onClick={() => imageInputRef.current?.click()}>
+              <Image size={16} />
+            </button>
           </div>
         </div>
 
-        {/* Right sidebar */}
         <aside className="editor-sidebar">
-          {/* Collaborators */}
           <div className="sidebar-block">
             <div className="sidebar-block-header">
               <span className="sidebar-block-title">COLLABORATORS</span>
               <span className="sidebar-block-badge">1 ACTIVE</span>
             </div>
-            <div className="sidebar-avatars">
-              <img src="https://i.pravatar.cc/150?u=user" alt="You" title="You" />
+            <div className="sidebar-avatars" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <img src="https://i.pravatar.cc/150?u=user" alt="You" title="You" style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover', border: '2px solid #fff', boxShadow: '0 0 0 1px var(--border-color)' }} />
+              <button
+                onClick={() => setShowCollab(true)}
+                style={{ width: 30, height: 30, borderRadius: '50%', border: '1.5px dashed var(--border-color)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-secondary)', transition: 'all 0.2s' }}
+                title="Invite collaborator"
+              >
+                <Mail size={13} />
+              </button>
             </div>
           </div>
 
-          {/* Study AI */}
           <div className="sidebar-block">
             <div className="sidebar-ai-header">
               <div className="sidebar-ai-icon"><BookOpen size={16} /></div>
@@ -156,34 +338,39 @@ const TextEditorPage = ({ note, onBack }) => {
             </div>
             <div className="sidebar-ai-actions">
               <button className="sidebar-ai-btn">
-                <PlayCircle size={15} />
-                <span>Summarize Note</span>
+                <PlayCircle size={15} /><span>Summarize Note</span>
                 <ArrowLeft size={13} className="sidebar-ai-chevron" />
               </button>
               <button className="sidebar-ai-btn">
-                <BookOpen size={15} />
-                <span>Explain Concept</span>
+                <BookOpen size={15} /><span>Explain Concept</span>
                 <ArrowLeft size={13} className="sidebar-ai-chevron" />
               </button>
               <button className="sidebar-ai-btn">
-                <HelpCircle size={15} />
-                <span>Generate Quiz</span>
+                <HelpCircle size={15} /><span>Generate Quiz</span>
                 <ArrowLeft size={13} className="sidebar-ai-chevron" />
               </button>
             </div>
           </div>
 
-          {/* Readability */}
+          {aiSuggestion && (
+            <div className="sidebar-block">
+              <div className="sidebar-block-header">
+                <span className="sidebar-block-title">AI SUGGESTION</span>
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, fontStyle: 'italic' }}>
+                "{aiSuggestion}"
+              </p>
+              <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>Press Tab ↹ to accept</p>
+            </div>
+          )}
+
           <div className="sidebar-block">
             <div className="sidebar-block-header">
               <span className="sidebar-block-title">READABILITY</span>
               <span className="sidebar-block-title">{Math.min(100, Math.max(0, Math.round(wordCount * 1.2)))}/100</span>
             </div>
             <div className="sidebar-progress-track">
-              <div
-                className="sidebar-progress-fill"
-                style={{ width: `${Math.min(100, Math.round(wordCount * 1.2))}%` }}
-              />
+              <div className="sidebar-progress-fill" style={{ width: `${Math.min(100, Math.round(wordCount * 1.2))}%` }} />
             </div>
           </div>
         </aside>

@@ -31,9 +31,12 @@ function App() {
           id: Date.now().toString(),
           timestamp: new Date(),
           teamId: noteData.teamId || null,
+          subjectId: noteData.subjectId || null,
           tag: noteData.tag || (noteData.teamId
             ? (teams.find(t => t.id === noteData.teamId)?.name?.toUpperCase() || 'TEAM')
             : 'PERSONAL'),
+          collaborators: noteData.collaborators || [],
+          images: noteData.images || [],
         };
         setNotes(prev => [newNote, ...prev]);
       }
@@ -41,17 +44,12 @@ function App() {
     setActiveNote(null);
   }, [teams]);
 
-  // Soft-delete: moves note to archive with 30-day expiry
   const handleDeleteNote = useCallback((noteId) => {
     const note = notes.find(n => n.id === noteId);
     if (!note) return;
     setArchivedNotes(prev => [
       ...prev,
-      {
-        ...note,
-        deletedAt: new Date(),
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      },
+      { ...note, deletedAt: new Date(), expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
     ]);
     setNotes(prev => prev.filter(n => n.id !== noteId));
   }, [notes]);
@@ -59,8 +57,7 @@ function App() {
   const handleRestoreNote = useCallback((noteId) => {
     const note = archivedNotes.find(n => n.id === noteId);
     if (!note) return;
-    // eslint-disable-next-line no-unused-vars
-    const { deletedAt, expiresAt, ...restored } = note;
+    const { deletedAt, expiresAt, ...restored } = note; // eslint-disable-line no-unused-vars
     setNotes(prev => [{ ...restored, timestamp: new Date() }, ...prev]);
     setArchivedNotes(prev => prev.filter(n => n.id !== noteId));
   }, [archivedNotes]);
@@ -73,12 +70,61 @@ function App() {
     const newTeam = {
       id: `team-${Date.now()}`,
       name: teamData.name,
-      subject: teamData.subject || 'GENERAL',
-      members: [{ id: 1, name: 'You', avatar: 'https://i.pravatar.cc/150?u=user' }],
+      subjects: [{ id: 's1', name: teamData.subject || 'General' }],
+      members: [{ id: 1, name: 'You', avatar: 'https://i.pravatar.cc/150?u=user', email: 'you@peerpad.app' }],
+      pendingInvites: [],
     };
     setTeams(prev => [...prev, newTeam]);
     setActiveTeamId(newTeam.id);
     setCurrentPage('teams');
+  }, []);
+
+  const handleExitTeam = useCallback((teamId) => {
+    setTeams(prev => prev.filter(t => t.id !== teamId));
+    setNotes(prev => prev.filter(n => n.teamId !== teamId));
+    setActiveTeamId(null);
+  }, []);
+
+  const handleUpdateTeam = useCallback((teamId, updater) => {
+    setTeams(prev => prev.map(t => t.id === teamId ? updater(t) : t));
+  }, []);
+
+  // Save AI tool output (summary/transcript) to notes
+  const handleSaveAINote = useCallback((noteData) => {
+    const newNote = {
+      id: Date.now().toString(),
+      title: noteData.title,
+      content: noteData.content,
+      type: 'text',
+      tag: noteData.teamId
+        ? (teams.find(t => t.id === noteData.teamId)?.name?.toUpperCase() || 'TEAM')
+        : 'AI NOTE',
+      timestamp: new Date(),
+      teamId: noteData.teamId || null,
+      subjectId: noteData.subjectId || null,
+      collaborators: [],
+      images: [],
+      aiGenerated: true,
+    };
+    setNotes(prev => [newNote, ...prev]);
+  }, [teams]);
+
+  const handleArchiveAINote = useCallback((noteData) => {
+    const note = {
+      id: Date.now().toString(),
+      title: noteData.title,
+      content: noteData.content,
+      type: 'text',
+      tag: 'AI NOTE',
+      timestamp: new Date(),
+      teamId: null,
+      collaborators: [],
+      images: [],
+      aiGenerated: true,
+      deletedAt: new Date(),
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    };
+    setArchivedNotes(prev => [note, ...prev]);
   }, []);
 
   const renderPage = () => {
@@ -86,7 +132,17 @@ function App() {
       if (activeNote.type === 'drawing')
         return <DrawingCanvasPage note={activeNote} onBack={handleSaveAndBack} />;
       if (activeNote.type === 'text')
-        return <TextEditorPage note={activeNote} onBack={handleSaveAndBack} />;
+        return (
+          <TextEditorPage
+            note={activeNote}
+            onBack={handleSaveAndBack}
+            teamSubject={
+              activeNote.teamId
+                ? teams.find(t => t.id === activeNote.teamId)?.subjects?.find(s => s.id === activeNote.subjectId)?.name
+                : null
+            }
+          />
+        );
     }
 
     switch (currentPage) {
@@ -105,13 +161,22 @@ function App() {
             activeTeamId={activeTeamId}
             onSelectTeam={(id) => setActiveTeamId(id)}
             onCreateTeam={handleCreateTeam}
+            onExitTeam={handleExitTeam}
+            onUpdateTeam={handleUpdateTeam}
             onOpenNote={setActiveNote}
             onDeleteNote={handleDeleteNote}
             teamNotes={notes.filter(n => n.teamId === activeTeamId)}
+            onSaveAINote={handleSaveAINote}
+            onArchiveAINote={handleArchiveAINote}
           />
         );
       case 'ai':
-        return <AIToolsPage />;
+        return (
+          <AIToolsPage
+            onSaveNote={handleSaveAINote}
+            onArchiveNote={handleArchiveAINote}
+          />
+        );
       case 'settings':
         return <SettingsPage />;
       case 'archive':
