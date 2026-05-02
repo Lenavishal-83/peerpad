@@ -1,20 +1,24 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   ArrowLeft, Share2, MoreVertical, Bold, Italic,
   List, Link2, BookOpen, HelpCircle, PlayCircle,
-  AlignLeft, AlignCenter, Underline, Image, Mail,
+  AlignLeft, AlignCenter, Underline, Image,
   X, Check, Users
 } from 'lucide-react';
 import { useSync } from '../context/SyncContext';
 import './TextEditorPage.css';
 
-/* ── AI suggestion via Claude API ── */
-async function fetchAISuggestion(text) {
+/* ── AI suggestion via Claude API — subject-aware ── */
+async function fetchAISuggestion(text, subject) {
   try {
     const sentences = text.trim().split(/[.!?]+/).filter(s => s.trim().length > 3);
     if (sentences.length < 1 || text.trim().length < 20) return '';
     const lastSentence = sentences[sentences.length - 1].trim();
     if (!lastSentence) return '';
+
+    const subjectContext = subject
+      ? `The note is about the academic subject: ${subject}. `
+      : '';
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -24,7 +28,7 @@ async function fetchAISuggestion(text) {
         max_tokens: 40,
         messages: [{
           role: 'user',
-          content: `You are an academic note-taking autocomplete assistant. Continue the following partial sentence naturally with 5-12 words. Return ONLY the continuation text, no punctuation at start, no quotes, no explanation.
+          content: `You are an academic note-taking autocomplete assistant. ${subjectContext}Continue the following partial sentence naturally with 5-12 words. Return ONLY the continuation text, no punctuation at start, no quotes, no explanation.
 
 Partial text: "${lastSentence}"`
         }]
@@ -84,7 +88,7 @@ const CollabModal = ({ onClose, noteTitle }) => {
             <button
               type="submit"
               disabled={sending}
-              style={{ padding: '10px 18px', background: '#000', color: '#fff', border: 'none', borderRadius: 999, fontWeight: 600, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap', opacity: sending ? 0.6 : 1 }}
+              style={{ padding: '10px 18px', background: '#000', color: '#fff', border: 'none', borderRadius: 999, fontWeight: 600, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap', opacity: sending ? 0.6 : 1, fontFamily: 'inherit' }}
             >
               {sending ? 'Sending…' : 'Invite'}
             </button>
@@ -110,7 +114,7 @@ const CollabModal = ({ onClose, noteTitle }) => {
   );
 };
 
-const TextEditorPage = ({ note, onBack }) => {
+const TextEditorPage = ({ note, onBack, teamSubject, teamSubjects = [] }) => {
   const { dispatchEvent } = useSync();
   const [title, setTitle] = useState(note?.title || '');
   const [content, setContent] = useState(note?.content || '');
@@ -119,6 +123,7 @@ const TextEditorPage = ({ note, onBack }) => {
   const [wordCount, setWordCount] = useState(0);
   const [aiSuggestion, setAiSuggestion] = useState('');
   const [showCollab, setShowCollab] = useState(false);
+  const [activeSubject, setActiveSubject] = useState(note?.subject || teamSubject || null);
   const saveTimer = useRef(null);
   const aiTimer = useRef(null);
   const textareaRef = useRef(null);
@@ -152,7 +157,7 @@ const TextEditorPage = ({ note, onBack }) => {
     clearTimeout(aiTimer.current);
     aiTimer.current = setTimeout(async () => {
       if (val.trim().length > 20) {
-        const suggestion = await fetchAISuggestion(val);
+        const suggestion = await fetchAISuggestion(val, activeSubject);
         setAiSuggestion(suggestion);
       }
     }, 1200);
@@ -195,6 +200,7 @@ const TextEditorPage = ({ note, onBack }) => {
       images,
       type: 'text',
       teamId: note?.teamId || null,
+      subject: activeSubject || note?.subject || null,
       tag: note?.tag || 'PERSONAL',
     });
   };
@@ -202,6 +208,8 @@ const TextEditorPage = ({ note, onBack }) => {
   const savedLabel = lastSaved
     ? `Saved at ${lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
     : content !== (note?.content || '') ? 'Saving…' : 'Cloud Saved';
+
+  const allSubjects = teamSubjects.length > 0 ? teamSubjects : (teamSubject ? [teamSubject] : []);
 
   return (
     <div className="editor-page">
@@ -235,10 +243,36 @@ const TextEditorPage = ({ note, onBack }) => {
           <div className="editor-scroll-area">
             <div className="editor-meta">
               <span className="editor-tag">{note?.tag || 'PERSONAL'}</span>
+              {/* Subject selector for team notes */}
+              {allSubjects.length > 0 && (
+                <select
+                  value={activeSubject || ''}
+                  onChange={e => setActiveSubject(e.target.value)}
+                  style={{
+                    fontSize: 11, fontWeight: 700, background: '#f3f4f6',
+                    border: '1px solid #e5e7eb', borderRadius: 99,
+                    padding: '2px 10px', color: '#374151', cursor: 'pointer',
+                    outline: 'none', fontFamily: 'inherit', textTransform: 'uppercase',
+                    letterSpacing: '0.04em'
+                  }}
+                >
+                  {allSubjects.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              )}
               <span className="editor-meta-sep">·</span>
               <span className="editor-meta-text">{wordCount} words</span>
               {aiSuggestion && (
                 <span className="editor-ai-hint">Tab to accept suggestion</span>
+              )}
+              {activeSubject && (
+                <span style={{
+                  fontSize: 11, fontWeight: 600, color: '#6366f1',
+                  background: '#eef2ff', padding: '2px 8px', borderRadius: 99
+                }}>
+                  AI tuned for {activeSubject}
+                </span>
               )}
             </div>
 
@@ -271,7 +305,7 @@ const TextEditorPage = ({ note, onBack }) => {
               <textarea
                 ref={textareaRef}
                 className="editor-textarea"
-                placeholder="Start writing your note here…"
+                placeholder={activeSubject ? `Start writing your ${activeSubject} notes here…` : "Start writing your note here…"}
                 value={content}
                 onChange={handleContentChange}
                 onKeyDown={handleKeyDown}
@@ -323,19 +357,30 @@ const TextEditorPage = ({ note, onBack }) => {
                 style={{ width: 30, height: 30, borderRadius: '50%', border: '1.5px dashed var(--border-color)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-secondary)', transition: 'all 0.2s' }}
                 title="Invite collaborator"
               >
-                <Mail size={13} />
+                <Users size={13} />
               </button>
             </div>
           </div>
 
+          {/* Subject-aware AI panel */}
           <div className="sidebar-block">
             <div className="sidebar-ai-header">
               <div className="sidebar-ai-icon"><BookOpen size={16} /></div>
               <div>
                 <div className="sidebar-ai-name">Study AI</div>
-                <div className="sidebar-ai-sub">YOUR ACADEMIC PARTNER</div>
+                <div className="sidebar-ai-sub">
+                  {activeSubject ? activeSubject.toUpperCase() : 'YOUR ACADEMIC PARTNER'}
+                </div>
               </div>
             </div>
+            {activeSubject && (
+              <div style={{
+                background: '#eef2ff', borderRadius: 8, padding: '8px 12px',
+                fontSize: 12, color: '#4f46e5', marginBottom: 10, lineHeight: 1.4
+              }}>
+                ✨ AI suggestions are tuned for <strong>{activeSubject}</strong>
+              </div>
+            )}
             <div className="sidebar-ai-actions">
               <button className="sidebar-ai-btn">
                 <PlayCircle size={15} /><span>Summarize Note</span>

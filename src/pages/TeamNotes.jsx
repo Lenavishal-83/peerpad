@@ -2,8 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import {
   UserPlus, MoreVertical, FileText, Activity, Plus, X,
   Copy, Check, PenTool, Users, ArrowLeft, ChevronRight,
-  Trash2, LogOut, Upload, Mic, Sparkles, Send, StopCircle,
-  ChevronDown, Tag
+  Trash2, LogOut, Upload, Mic, Sparkles, StopCircle,
+  Tag, Settings
 } from 'lucide-react';
 import './TeamNotes.css';
 
@@ -24,8 +24,8 @@ const DeleteConfirm = ({ note, onConfirm, onCancel }) => (
   <div className="tn-modal-overlay" onClick={onCancel}>
     <div className="tn-modal-box" onClick={e => e.stopPropagation()}>
       <div className="tn-delete-icon"><Trash2 size={22} /></div>
-      <h3 className="tn-modal-title">Move to Archive?</h3>
-      <p className="tn-modal-sub">
+      <h3 className="tn-modal-title" style={{ textAlign: 'center', marginBottom: 8 }}>Move to Archive?</h3>
+      <p className="tn-modal-sub" style={{ textAlign: 'center' }}>
         <strong>"{note.title}"</strong> will be moved to your Archive and permanently deleted after 30 days.
       </p>
       <div className="tn-modal-actions">
@@ -43,8 +43,10 @@ const ExitTeamConfirm = ({ team, onConfirm, onCancel }) => (
   <div className="tn-modal-overlay" onClick={onCancel}>
     <div className="tn-modal-box" onClick={e => e.stopPropagation()}>
       <div className="tn-exit-icon"><LogOut size={22} /></div>
-      <h3 className="tn-modal-title">Leave "{team.name}"?</h3>
-      <p className="tn-modal-sub">You'll lose access to all shared notes in this workspace. You can rejoin via an invite link.</p>
+      <h3 className="tn-modal-title" style={{ textAlign: 'center', marginBottom: 8 }}>Leave "{team.name}"?</h3>
+      <p className="tn-modal-sub" style={{ textAlign: 'center' }}>
+        You'll lose access to all shared notes in this workspace. You can rejoin via an invite link.
+      </p>
       <div className="tn-modal-actions">
         <button className="btn btn-secondary" onClick={onCancel}>Cancel</button>
         <button className="btn tn-exit-confirm-btn" onClick={onConfirm}>
@@ -163,10 +165,11 @@ const CreateTeamModal = ({ onClose, onCreate }) => {
             onChange={e => setName(e.target.value)}
             autoFocus
             required
+            style={{ marginBottom: 16 }}
           />
 
-          <label className="tn-modal-label" style={{ marginTop: 16 }}>
-            Subjects / Topics <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 11, color: '#9ca3af' }}>(up to 3)</span>
+          <label className="tn-modal-label">
+            Subjects / Topics <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 11, color: '#9ca3af' }}>(up to 3, at least 1)</span>
           </label>
           {subjects.map((s, i) => (
             <input
@@ -184,6 +187,82 @@ const CreateTeamModal = ({ onClose, onCreate }) => {
             <Plus size={16} /> Create Team
           </button>
         </form>
+      </div>
+    </div>
+  );
+};
+
+/* ── Manage Subjects Modal ── */
+const ManageSubjectsModal = ({ team, onClose, onUpdateTeam }) => {
+  const [subjects, setSubjects] = useState(team.subjects || ['GENERAL']);
+  const [newSubject, setNewSubject] = useState('');
+
+  const addSubject = () => {
+    const trimmed = newSubject.trim().toUpperCase();
+    if (!trimmed || subjects.includes(trimmed)) return;
+    setSubjects(prev => [...prev, trimmed]);
+    setNewSubject('');
+  };
+
+  const removeSubject = (s) => {
+    if (subjects.length <= 1) return;
+    setSubjects(prev => prev.filter(x => x !== s));
+  };
+
+  const handleSave = () => {
+    onUpdateTeam(team.id, t => ({ ...t, subjects }));
+    onClose();
+  };
+
+  return (
+    <div className="tn-modal-overlay" onClick={onClose}>
+      <div className="tn-modal-box" onClick={e => e.stopPropagation()}>
+        <div className="tn-modal-header">
+          <h2 className="tn-modal-title">Manage Subjects</h2>
+          <button className="tn-modal-close" onClick={onClose}><X size={20} /></button>
+        </div>
+        <p className="tn-modal-sub">Add or remove subjects for "{team.name}".</p>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+          {subjects.map(s => (
+            <div key={s} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: '#f3f4f6', borderRadius: 99, padding: '5px 12px',
+              fontSize: 12, fontWeight: 700, color: '#374151'
+            }}>
+              {s}
+              {subjects.length > 1 && (
+                <button onClick={() => removeSubject(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', display: 'flex', alignItems: 'center', padding: 0 }}>
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <label className="tn-modal-label">Add Subject</label>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+          <input
+            className="tn-modal-input"
+            placeholder="e.g. Biochemistry"
+            value={newSubject}
+            onChange={e => setNewSubject(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addSubject())}
+          />
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{ borderRadius: 999, padding: '10px 16px', whiteSpace: 'nowrap', flexShrink: 0 }}
+            onClick={addSubject}
+          >
+            Add
+          </button>
+        </div>
+
+        <div className="tn-modal-actions">
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSave}>Save Changes</button>
+        </div>
       </div>
     </div>
   );
@@ -237,6 +316,7 @@ const InviteModal = ({ team, onClose }) => {
               placeholder="teammate@university.edu"
               value={email}
               onChange={e => setEmail(e.target.value)}
+              autoFocus
             />
             <button type="submit" className="btn btn-primary" style={{ borderRadius: 999, padding: '10px 18px', whiteSpace: 'nowrap', flexShrink: 0 }}>
               Send
@@ -246,20 +326,71 @@ const InviteModal = ({ team, onClose }) => {
 
         {sent.length > 0 && (
           <div className="tn-invited-list">
-            <p className="tn-modal-label">Pending invites</p>
+            <p className="tn-modal-label" style={{ marginTop: 4 }}>Pending invites</p>
             {sent.map((e, i) => (
               <div key={i} className="tn-invited-item">
                 <div className="tn-invited-dot" />{e}
+                <span style={{ marginLeft: 'auto', fontSize: 11, color: '#22c55e', fontWeight: 600 }}>✓ Sent</span>
               </div>
             ))}
           </div>
         )}
+
+        <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 16, lineHeight: 1.5 }}>
+          📡 In production, invite links and emails would notify teammates in real-time via WebSocket sync.
+        </p>
       </div>
     </div>
   );
 };
 
-/* ── PDF Summary mini-modal (inside team) ── */
+/* ── Simulated Collaborators Presence ── */
+const CollaboratorsPresence = ({ team }) => {
+  const [onlineMembers] = useState(
+    team.members.map((m, i) => ({ ...m, active: i < 2, cursor: i === 1 ? 'Viewing Subject 1' : 'Editing note' }))
+  );
+
+  return (
+    <div style={{
+      background: '#f9fafb',
+      border: '1px solid #e5e7eb',
+      borderRadius: 12,
+      padding: '12px 16px',
+      marginBottom: 24,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', animation: 'pulse 2s infinite' }} />
+        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6b7280' }}>
+          Live Collaboration
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {onlineMembers.map(m => (
+          <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              <img src={m.avatar} alt={m.name} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} />
+              <div style={{
+                position: 'absolute', bottom: 0, right: 0,
+                width: 9, height: 9, borderRadius: '50%',
+                background: m.active ? '#22c55e' : '#d1d5db',
+                border: '1.5px solid #fff'
+              }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1a1a' }}>{m.name} {m.id === 1 ? '(You)' : ''}</div>
+              <div style={{ fontSize: 11, color: '#9ca3af' }}>{m.active ? m.cursor : 'Offline'}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 10, lineHeight: 1.5 }}>
+        🔌 Real-time sync via WebSocket — changes appear instantly for all members.
+      </p>
+    </div>
+  );
+};
+
+/* ── PDF Summary mini-modal ── */
 const TeamPDFSummary = ({ team, subjects, onSave, onClose }) => {
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState('idle');
@@ -272,7 +403,7 @@ const TeamPDFSummary = ({ team, subjects, onSave, onClose }) => {
     setFile(f);
     setStatus('loading');
     setTimeout(() => {
-      setSummary(`AI Summary of "${f.name}": This document covers key academic concepts. The main themes include foundational theory, practical applications, and critical analysis frameworks relevant to ${selectedSubject}.`);
+      setSummary(`AI Summary of "${f.name}":\n\nThis document covers key academic concepts related to ${selectedSubject}. The main themes include foundational theory, practical applications, and critical analysis frameworks.\n\nKey Points:\n• Core principles and definitions introduced in Chapter 1\n• Experimental methodologies and research design\n• Statistical analysis and interpretation of results\n• Real-world applications and case studies\n• Summary of conclusions and future directions`);
       setStatus('done');
     }, 2500);
   };
@@ -309,6 +440,7 @@ const TeamPDFSummary = ({ team, subjects, onSave, onClose }) => {
             <button className="tn-upload-zone" onClick={() => fileRef.current?.click()}>
               <Upload size={24} />
               <span>Click to upload PDF</span>
+              <span style={{ fontSize: 12, color: '#9ca3af' }}>Saved to team workspace for all members</span>
             </button>
           </>
         )}
@@ -322,11 +454,11 @@ const TeamPDFSummary = ({ team, subjects, onSave, onClose }) => {
 
         {status === 'done' && (
           <div className="tn-summary-result">
-            <p className="tn-summary-text">{summary}</p>
+            <div className="tn-summary-text" style={{ whiteSpace: 'pre-line' }}>{summary}</div>
             <div className="tn-modal-actions" style={{ marginTop: 16 }}>
               <button className="btn btn-secondary" onClick={onClose}>Discard</button>
               <button className="btn btn-primary" onClick={handleSave}>
-                Save to Team
+                <Sparkles size={14} /> Save to Team
               </button>
             </div>
           </div>
@@ -336,7 +468,7 @@ const TeamPDFSummary = ({ team, subjects, onSave, onClose }) => {
   );
 };
 
-/* ── Voice Transcribe mini-modal (inside team) ── */
+/* ── Voice Transcribe mini-modal ── */
 const TeamVoiceTranscribe = ({ team, subjects, onSave, onClose }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState('');
@@ -428,7 +560,7 @@ const TeamVoiceTranscribe = ({ team, subjects, onSave, onClose }) => {
   );
 };
 
-/* ── FAB (same as home) ── */
+/* ── FAB ── */
 const TeamFAB = ({ onAction }) => {
   const [open, setOpen] = useState(false);
   const fileRef = useRef(null);
@@ -476,6 +608,9 @@ const TeamFAB = ({ onAction }) => {
 /* ── Subject Tabs ── */
 const SubjectTabs = ({ subjects, active, onChange }) => (
   <div className="tn-subject-tabs">
+    <button className={`tn-subject-tab ${active === 'all' ? 'active' : ''}`} onClick={() => onChange('all')}>
+      All
+    </button>
     {subjects.map(s => (
       <button
         key={s}
@@ -485,9 +620,6 @@ const SubjectTabs = ({ subjects, active, onChange }) => (
         <Tag size={11} />{s}
       </button>
     ))}
-    <button className={`tn-subject-tab ${active === 'all' ? 'active' : ''}`} onClick={() => onChange('all')}>
-      All
-    </button>
   </div>
 );
 
@@ -542,10 +674,13 @@ const TeamListView = ({ teams, onSelect, onCreateTeam, onExitTeam }) => {
         <div className="tn-teams-grid">
           {teams.map(team => (
             <div key={team.id} className="tn-team-card">
-              {/* Main click area → open workspace */}
+              {/* Main clickable body */}
               <div className="tn-team-card-body" onClick={() => onSelect(team.id)}>
                 <div className="tn-team-card-top">
-                  <span className="tn-badge">{(team.subjects || [team.subject])[0]}</span>
+                  <span className="tn-badge">
+                    <Activity size={10} style={{ marginRight: 4 }} />
+                    {(team.subjects || ['GENERAL'])[0]}
+                  </span>
                   <ChevronRight size={16} style={{ color: '#9ca3af' }} />
                 </div>
                 <h3 className="tn-team-card-name">{team.name}</h3>
@@ -568,7 +703,8 @@ const TeamListView = ({ teams, onSelect, onCreateTeam, onExitTeam }) => {
                   <span className="tn-member-count">{team.members.length} member{team.members.length !== 1 ? 's' : ''}</span>
                 </div>
               </div>
-              {/* Card action row */}
+
+              {/* Action row: invite + exit */}
               <div className="tn-team-card-actions">
                 <button
                   className="tn-card-action-btn"
@@ -576,6 +712,7 @@ const TeamListView = ({ teams, onSelect, onCreateTeam, onExitTeam }) => {
                   title="Invite member"
                 >
                   <UserPlus size={14} />
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>Invite</span>
                 </button>
                 <button
                   className="tn-card-action-btn tn-exit-btn"
@@ -583,6 +720,7 @@ const TeamListView = ({ teams, onSelect, onCreateTeam, onExitTeam }) => {
                   title="Leave team"
                 >
                   <LogOut size={14} />
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>Leave</span>
                 </button>
               </div>
             </div>
@@ -601,18 +739,18 @@ const TeamListView = ({ teams, onSelect, onCreateTeam, onExitTeam }) => {
 };
 
 /* ── Team Workspace ── */
-const TeamWorkspaceView = ({ team, notes, onOpenNote, onBack, onDeleteNote, onExitTeam, onSaveNote }) => {
+const TeamWorkspaceView = ({ team, notes, onOpenNote, onBack, onDeleteNote, onExitTeam, onSaveNote, onUpdateTeam }) => {
   const [showInvite, setShowInvite] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [activeSubject, setActiveSubject] = useState('all');
   const [showPDF, setShowPDF] = useState(false);
   const [showVoice, setShowVoice] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showManageSubjects, setShowManageSubjects] = useState(false);
   const moreRef = useRef(null);
 
   const subjects = team.subjects || (team.subject ? [team.subject] : ['GENERAL']);
 
-  // Close more-menu on outside click
   useEffect(() => {
     const handler = (e) => {
       if (moreRef.current && !moreRef.current.contains(e.target)) setShowMoreMenu(false);
@@ -626,7 +764,13 @@ const TeamWorkspaceView = ({ team, notes, onOpenNote, onBack, onDeleteNote, onEx
   );
 
   const handleCreateNote = (type) => {
-    onOpenNote({ type, teamId: team.id, tag: team.name.toUpperCase() });
+    onOpenNote({
+      type,
+      teamId: team.id,
+      tag: team.name.toUpperCase(),
+      subject: activeSubject !== 'all' ? activeSubject : subjects[0],
+      subjectContext: subjects,
+    });
   };
 
   const handleFABAction = (type, dataURL) => {
@@ -639,6 +783,8 @@ const TeamWorkspaceView = ({ team, notes, onOpenNote, onBack, onDeleteNote, onEx
         dataURL,
         teamId: team.id,
         tag: team.name.toUpperCase(),
+        subject: activeSubject !== 'all' ? activeSubject : subjects[0],
+        timestamp: new Date(),
       });
     } else if (type === 'pdf') setShowPDF(true);
     else if (type === 'voice') setShowVoice(true);
@@ -655,6 +801,13 @@ const TeamWorkspaceView = ({ team, notes, onOpenNote, onBack, onDeleteNote, onEx
       {showInvite && <InviteModal team={team} onClose={() => setShowInvite(false)} />}
       {showExitConfirm && (
         <ExitTeamConfirm team={team} onConfirm={handleExitConfirm} onCancel={() => setShowExitConfirm(false)} />
+      )}
+      {showManageSubjects && (
+        <ManageSubjectsModal
+          team={team}
+          onClose={() => setShowManageSubjects(false)}
+          onUpdateTeam={onUpdateTeam}
+        />
       )}
       {showPDF && (
         <TeamPDFSummary
@@ -695,8 +848,11 @@ const TeamWorkspaceView = ({ team, notes, onOpenNote, onBack, onDeleteNote, onEx
         </div>
 
         <div className="tn-workspace-header-right">
-          <button className="btn tn-pdf-btn" onClick={() => setShowPDF(true)}>
-            <Sparkles size={15} /> AI Tools
+          <button className="btn btn-secondary tn-pdf-btn" onClick={() => setShowPDF(true)}>
+            <Sparkles size={15} /> PDF Summary
+          </button>
+          <button className="btn btn-secondary tn-pdf-btn" onClick={() => setShowVoice(true)}>
+            <Mic size={15} /> Voice
           </button>
           <button className="btn btn-primary" onClick={() => setShowInvite(true)}>
             <UserPlus size={16} /> Invite
@@ -708,6 +864,9 @@ const TeamWorkspaceView = ({ team, notes, onOpenNote, onBack, onDeleteNote, onEx
             </button>
             {showMoreMenu && (
               <div className="tn-more-menu">
+                <button className="tn-more-item" onClick={() => { setShowMoreMenu(false); setShowManageSubjects(true); }}>
+                  <Settings size={15} /> Manage Subjects
+                </button>
                 <button className="tn-more-item tn-more-exit" onClick={() => { setShowMoreMenu(false); setShowExitConfirm(true); }}>
                   <LogOut size={15} /> Leave Team
                 </button>
@@ -716,6 +875,9 @@ const TeamWorkspaceView = ({ team, notes, onOpenNote, onBack, onDeleteNote, onEx
           </div>
         </div>
       </div>
+
+      {/* Live collaboration presence bar */}
+      <CollaboratorsPresence team={team} />
 
       {/* Subject filter + notebooks header */}
       <div className="tn-notebooks-header">
@@ -739,12 +901,18 @@ const TeamWorkspaceView = ({ team, notes, onOpenNote, onBack, onDeleteNote, onEx
           <div className="tn-empty-icon" style={{ margin: '0 auto 14px' }}><FileText size={28} /></div>
           <p className="tn-empty-title" style={{ fontSize: 16, marginBottom: 6 }}>No notes yet</p>
           <p className="tn-empty-sub">Be the first to add a note to this workspace.</p>
-          <div style={{ display: 'flex', gap: 10, marginTop: 16, justifyContent: 'center' }}>
+          <div style={{ display: 'flex', gap: 10, marginTop: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
             <button className="btn btn-primary" onClick={() => handleCreateNote('text')}>
               <FileText size={15} /> Text Note
             </button>
             <button className="btn btn-secondary" onClick={() => handleCreateNote('drawing')}>
               <PenTool size={15} /> Drawing
+            </button>
+            <button className="btn btn-secondary" onClick={() => setShowPDF(true)}>
+              <Sparkles size={15} /> PDF Summary
+            </button>
+            <button className="btn btn-secondary" onClick={() => setShowVoice(true)}>
+              <Mic size={15} /> Voice Note
             </button>
           </div>
         </div>
@@ -765,14 +933,14 @@ const TeamWorkspaceView = ({ team, notes, onOpenNote, onBack, onDeleteNote, onEx
         </div>
       )}
 
-      {/* FAB */}
+      {/* FAB — same as home page */}
       <TeamFAB onAction={handleFABAction} />
     </div>
   );
 };
 
 /* ── Root ── */
-const TeamNotes = ({ teams, activeTeamId, onSelectTeam, onCreateTeam, onOpenNote, onDeleteNote, teamNotes, onExitTeam, onSaveNote }) => {
+const TeamNotes = ({ teams, activeTeamId, onSelectTeam, onCreateTeam, onOpenNote, onDeleteNote, teamNotes, onExitTeam, onSaveNote, onUpdateTeam }) => {
   const activeTeam = teams.find(t => t.id === activeTeamId);
 
   if (!activeTeam) {
@@ -795,6 +963,7 @@ const TeamNotes = ({ teams, activeTeamId, onSelectTeam, onCreateTeam, onOpenNote
       onDeleteNote={onDeleteNote}
       onExitTeam={onExitTeam}
       onSaveNote={onSaveNote}
+      onUpdateTeam={onUpdateTeam}
     />
   );
 };

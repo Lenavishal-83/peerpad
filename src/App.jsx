@@ -5,7 +5,7 @@ import TeamNotes from './pages/TeamNotes';
 import DrawingCanvasPage from './pages/DrawingCanvasPage';
 import AIToolsPage from './pages/AIToolsPage';
 import TextEditorPage from './pages/TextEditorPage';
-import SettingsPage from './pages/SettingsPage';
+import SettingsPage from './pages/Settingspage';
 import ArchivePage from './pages/ArchivePage';
 import AboutPage from './pages/AboutPage';
 import { SyncProvider } from './context/SyncContext';
@@ -67,10 +67,14 @@ function App() {
   }, []);
 
   const handleCreateTeam = useCallback((teamData) => {
+    const subjects = Array.isArray(teamData.subjects)
+      ? teamData.subjects
+      : [teamData.subject || 'GENERAL'];
+
     const newTeam = {
       id: `team-${Date.now()}`,
       name: teamData.name,
-      subjects: [{ id: 's1', name: teamData.subject || 'General' }],
+      subjects,
       members: [{ id: 1, name: 'You', avatar: 'https://i.pravatar.cc/150?u=user', email: 'you@peerpad.app' }],
       pendingInvites: [],
     };
@@ -89,7 +93,6 @@ function App() {
     setTeams(prev => prev.map(t => t.id === teamId ? updater(t) : t));
   }, []);
 
-  // Save AI tool output (summary/transcript) to notes
   const handleSaveAINote = useCallback((noteData) => {
     const newNote = {
       id: Date.now().toString(),
@@ -102,6 +105,7 @@ function App() {
       timestamp: new Date(),
       teamId: noteData.teamId || null,
       subjectId: noteData.subjectId || null,
+      subject: noteData.subject || null,
       collaborators: [],
       images: [],
       aiGenerated: true,
@@ -131,18 +135,21 @@ function App() {
     if (activeNote) {
       if (activeNote.type === 'drawing')
         return <DrawingCanvasPage note={activeNote} onBack={handleSaveAndBack} />;
-      if (activeNote.type === 'text')
+      if (activeNote.type === 'text') {
+        const team = activeNote.teamId ? teams.find(t => t.id === activeNote.teamId) : null;
         return (
           <TextEditorPage
             note={activeNote}
             onBack={handleSaveAndBack}
             teamSubject={
               activeNote.teamId
-                ? teams.find(t => t.id === activeNote.teamId)?.subjects?.find(s => s.id === activeNote.subjectId)?.name
+                ? team?.subjects?.find(s => s === activeNote.subject) || team?.subjects?.[0]
                 : null
             }
+            teamSubjects={team?.subjects || []}
           />
         );
+      }
     }
 
     switch (currentPage) {
@@ -166,8 +173,8 @@ function App() {
             onOpenNote={setActiveNote}
             onDeleteNote={handleDeleteNote}
             teamNotes={notes.filter(n => n.teamId === activeTeamId)}
-            onSaveAINote={handleSaveAINote}
-            onArchiveAINote={handleArchiveAINote}
+            onSaveNote={handleSaveAINote}
+            onArchiveNote={handleArchiveAINote}
           />
         );
       case 'ai':
